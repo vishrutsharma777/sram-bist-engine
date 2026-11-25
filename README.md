@@ -5,6 +5,19 @@ memory, and a march-algorithm BIST engine that finds the injected faults.
 The deliverable is not "a memory in Verilog" - it is a **measured fault
 coverage comparison between two march algorithms**.
 
+## Live demo
+
+**[vishrutsharma777.github.io/sram-bist-engine](https://vishrutsharma777.github.io/sram-bist-engine/)**:
+an interactive, cycle-accurate walk-through of the BIST engine and the faulty
+memory. Pick a fault and an algorithm, step the clock and watch the march walk
+the 64 x 8 array, the read-compare shadow register, and the first-failure latch.
+The page re-runs the testbench sweep in the browser and maps coverage over every
+aggressor/victim address pair. `demo/model.js` is a JavaScript port of
+`rtl/mbist_ctrl.v` and `rtl/sram_faulty.v`; `node demo/check_model.js` asserts
+that it reproduces every result in `docs/fault_table.md`. Two what-if switches
+(same-cycle compare, one-edge coupling faults) and a "real-silicon" view are
+marked on the page as not part of this RTL.
+
 ## Result
 
 Sweeping 11 classical fault models through a 64 x 8 memory:
@@ -51,6 +64,7 @@ rtl/mbist_ctrl.v        march engine: MATS+ and March C-, selected by `algo`
 rtl/sram_top.v          synthesisable functional-port / BIST mux
 tb/tb_mbist.v           fault sweep, emits docs/fault_table.md
 scripts/golden_model.py Python reference implementing the same fault models
+demo/                   interactive page (GitHub Pages) + JS model + check_model.js
 ```
 
 ## Build

@@ -1,0 +1,544 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SRAM MBIST Demo</title>
+<meta name="description" content="Cycle-accurate, interactive walk-through of a march-algorithm memory BIST in Verilog: watch MATS+ and March C− walk a 64 x 8 SRAM, inject stuck-at, transition, coupling and address-decoder faults, and see which algorithm catches them.">
+<style>
+:root{
+  --bg:#f6f7f9; --panel:#ffffff; --ink:#16181d; --muted:#5d6472; --line:#c9ced8; --wire:#8a92a3;
+  --one:#0f8a5f; --zero:#3d5a99; --err:#d1343a; --warn:#b26a00; --accent:#2f5bd3;
+  --chip:#eef1f6; --dash:#c03a8a; --agg:#7a4fd6;
+  --block:#fbfcfe; --blockline:#9aa3b5; --code:#f0f2f6;
+  --hit:#2a78d6; --miss:#eb6834;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#0f1115; --panel:#171a21; --ink:#e7e9ee; --muted:#9aa1ae; --line:#2c313c; --wire:#6b7385;
+    --one:#3ccf91; --zero:#7e9cf0; --err:#ff5c61; --warn:#f0a53a; --accent:#7e9cf0;
+    --chip:#1f2430; --dash:#f06bb8; --agg:#b39bff;
+    --block:#1b1f27; --blockline:#4a5263; --code:#1f2430;
+    --hit:#3987e5; --miss:#d95926;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#0f1115; --panel:#171a21; --ink:#e7e9ee; --muted:#9aa1ae; --line:#2c313c; --wire:#6b7385;
+  --one:#3ccf91; --zero:#7e9cf0; --err:#ff5c61; --warn:#f0a53a; --accent:#7e9cf0;
+  --chip:#1f2430; --dash:#f06bb8; --agg:#b39bff;
+  --block:#1b1f27; --blockline:#4a5263; --code:#1f2430;
+  --hit:#3987e5; --miss:#d95926;
+}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:var(--ink);
+  font:15px/1.55 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+code,.mono{font-family:ui-monospace,"Cascadia Code",Consolas,monospace;font-size:.92em}
+code{background:var(--code);padding:1px 5px;border-radius:4px}
+a{color:var(--accent)}
+.wrap{max-width:1240px;margin:0 auto;padding:20px 16px 60px}
+header h1{font-size:1.65rem;margin:0 0 4px;letter-spacing:-.01em}
+header p{margin:0;color:var(--muted);max-width:920px}
+.badges{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
+.badge{font-size:.8rem;border:1px solid var(--line);border-radius:999px;padding:2px 10px;color:var(--muted);background:var(--panel)}
+.badge b{color:var(--one)}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:14px 16px;margin-top:16px}
+.panel h2{font-size:1.1rem;margin:0 0 8px}
+.panel h3{font-size:.98rem;margin:14px 0 6px}
+.controls{display:flex;flex-wrap:wrap;gap:8px 14px;align-items:center}
+.controls .grp{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+button{font:inherit;font-size:.9rem;border:1px solid var(--line);background:var(--chip);color:var(--ink);
+  padding:5px 12px;border-radius:7px;cursor:pointer}
+button:hover{border-color:var(--accent)}
+button:disabled{opacity:.5;cursor:default}
+button.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+button.danger{border-color:var(--err);color:var(--err)}
+button.small{font-size:.78rem;padding:1px 8px}
+select,input{font:inherit;font-size:.9rem}
+select,input[type=number]{background:var(--chip);color:var(--ink);border:1px solid var(--line);border-radius:7px;padding:4px 6px}
+input[type=number]{width:58px}
+label.tog{display:flex;gap:6px;align-items:center;font-size:.9rem;cursor:pointer;user-select:none}
+.sep{width:1px;height:26px;background:var(--line)}
+.stat{font-size:.85rem;color:var(--muted)}
+.stat b{color:var(--ink);font-variant-numeric:tabular-nums}
+#custom{display:none;margin-top:8px;padding:8px 10px;border:1px dashed var(--line);border-radius:8px}
+#custom.on{display:flex}
+.diagram-scroll{overflow-x:auto;margin-top:10px}
+#diagram{display:block;width:100%;min-width:900px;height:auto}
+/* svg */
+.blk{fill:var(--block);stroke:var(--blockline);stroke-width:1.4}
+.blk-title{font:600 15px ui-monospace,Consolas,monospace;fill:var(--ink)}
+.blk-sub{font:12px system-ui,sans-serif;fill:var(--muted)}
+.lbl{font:12px ui-monospace,Consolas,monospace;fill:var(--muted)}
+.lbl-ink{font:12.5px ui-monospace,Consolas,monospace;fill:var(--ink)}
+.lbl-sm{font:10px ui-monospace,Consolas,monospace;fill:var(--muted)}
+.val{font:600 12px ui-monospace,Consolas,monospace;fill:var(--ink)}
+.wire{fill:none;stroke:var(--wire);stroke-width:2}
+.wire.v1{stroke:var(--one)} .wire.v0{stroke:var(--zero)}
+.wire.bus{stroke-width:4}
+.wire.act{stroke:var(--accent)}
+.wire.hot{stroke:var(--err)}
+.clknet{fill:none;stroke:var(--warn);stroke-width:2}
+.clknet.pulse{animation:pulse .35s ease-out}
+@keyframes pulse{0%{stroke-width:5;opacity:1}100%{stroke-width:2;opacity:.9}}
+.reg{fill:var(--chip);stroke:var(--blockline);stroke-width:1}
+.reg.r1{fill:var(--one);stroke:var(--one)}
+.reg.bad{fill:var(--err);stroke:var(--err)}
+.regtxt{font:600 12px ui-monospace,Consolas,monospace;text-anchor:middle;dominant-baseline:central;fill:var(--ink)}
+.reg.r1 + .regtxt,.reg.bad + .regtxt{fill:#fff}
+.pill{fill:var(--chip);stroke:var(--blockline);stroke-width:1}
+.pill.on{fill:var(--accent);stroke:var(--accent)}
+.pilltxt{font:600 11.5px ui-monospace,Consolas,monospace;text-anchor:middle;dominant-baseline:central;fill:var(--muted)}
+.pill.on + .pilltxt{fill:#fff}
+.elbox{fill:var(--chip);stroke:var(--blockline);stroke-width:1.2}
+.elbox.cur{fill:var(--block);stroke:var(--accent);stroke-width:2.4}
+.elbox.skip{opacity:.35;stroke-dasharray:4 3}
+.eltxt{font:600 13px ui-monospace,Consolas,monospace;text-anchor:middle;fill:var(--ink)}
+.eltxt .opcur{fill:var(--accent);text-decoration:underline}
+.elsub{font:10.5px ui-monospace,Consolas,monospace;text-anchor:middle;fill:var(--muted)}
+.elbar{fill:var(--accent)}
+.elbg{fill:var(--line)}
+.skiptxt{opacity:.5}
+.cell{stroke:none}
+.cell.c1{fill:var(--one)} .cell.c0{fill:var(--chip)}
+.cellbg{fill:var(--line)}
+.wordlbl{font:9px ui-monospace,Consolas,monospace;fill:var(--muted);text-anchor:end;dominant-baseline:central}
+.wordlbl.cur{fill:var(--ink);font-weight:700}
+.memhl{fill:none;stroke-width:2;rx:2}
+.ring{fill:none;stroke-width:2}
+.ring.v{stroke:var(--err)} .ring.a{stroke:var(--agg)}
+.cmp{fill:var(--block);stroke:var(--blockline);stroke-width:1.4}
+.cmp.hot{fill:var(--err);stroke:var(--err)}
+.cmptxt{font:700 16px ui-monospace,Consolas,monospace;text-anchor:middle;dominant-baseline:central;fill:var(--ink)}
+.cmp.hot + .cmptxt{fill:#fff}
+.token circle{stroke:#fff;stroke-width:1.5}
+.token text{font:700 10px ui-monospace,Consolas,monospace;fill:#fff;text-anchor:middle;dominant-baseline:central}
+.flash{fill:var(--err);opacity:0}
+.flash.on{animation:flash .7s ease-out}
+@keyframes flash{0%{opacity:.85}100%{opacity:0}}
+.mux{fill:none;stroke:var(--blockline);stroke-width:1.2;stroke-dasharray:4 3}
+.ovl{display:none}
+.real .ovl{display:inline}
+.real .notreal{display:none}
+.ovl-box{fill:none;stroke:var(--dash);stroke-width:1.6;stroke-dasharray:6 4}
+.ovl-fill{fill:var(--panel);opacity:.9}
+.ovl-txt{font:600 11.5px ui-monospace,Consolas,monospace;fill:var(--dash)}
+.ovl-tag{font:10.5px system-ui,sans-serif;fill:var(--dash)}
+.same .bugonly{display:inline} .bugonly{display:none}
+.same .nobug{display:none}
+.bugwire{fill:none;stroke:var(--err);stroke-width:2.4;stroke-dasharray:5 3}
+.same .shadowgrp{opacity:.35}
+.evtxt{font:12px ui-monospace,Consolas,monospace;fill:var(--ink)}
+.evtxt.hot{fill:var(--err);font-weight:700}
+/* layout below diagram */
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+@media (max-width:960px){.grid2{grid-template-columns:1fr}}
+canvas{display:block;width:100%}
+table{border-collapse:collapse;width:100%;font-size:.86rem}
+th,td{border-bottom:1px solid var(--line);padding:4px 6px;text-align:right;font-variant-numeric:tabular-nums;vertical-align:top}
+th{color:var(--muted);font-weight:600;font-size:.8rem}
+th:first-child,td:first-child{text-align:left}
+td.l,th.l{text-align:left}
+td.mono{font-family:ui-monospace,Consolas,monospace}
+tr.latched td{background:color-mix(in srgb,var(--err) 12%,transparent)}
+.ok{color:var(--one);font-weight:700} .bad{color:var(--err);font-weight:700}
+.fx{color:var(--agg)}
+.tblscroll{overflow-x:auto}
+.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(270px,1fr));gap:12px;margin-top:8px}
+.card{border:1px solid var(--line);border-radius:8px;padding:10px 12px;background:var(--block)}
+.card h4{margin:0 0 4px;font-size:.93rem}
+.card p{margin:0;font-size:.87rem;color:var(--muted)}
+.card.notrtl{border:1.5px dashed var(--dash)}
+.tag{display:inline-block;font-size:.72rem;font-weight:700;letter-spacing:.03em;padding:1px 7px;border-radius:999px;
+  border:1px solid currentColor;margin-left:6px;vertical-align:1px}
+.tag.rtl{color:var(--one)} .tag.no{color:var(--dash)}
+.note{border-left:3px solid var(--warn);padding:6px 10px;background:var(--chip);border-radius:0 6px 6px 0;font-size:.88rem;margin-top:10px}
+.legend{display:flex;flex-wrap:wrap;gap:14px;font-size:.82rem;color:var(--muted);margin-top:6px}
+.legend i{display:inline-block;width:18px;height:3px;vertical-align:middle;margin-right:5px;border-radius:2px}
+.legend s{display:inline-block;width:11px;height:11px;vertical-align:-1px;margin-right:5px;border-radius:2px;text-decoration:none}
+.legend u{display:inline-block;width:11px;height:11px;vertical-align:-1px;margin-right:5px;border:2px solid;text-decoration:none}
+.mapwrap{display:grid;grid-template-columns:minmax(0,520px) minmax(0,1fr);gap:18px;align-items:start}
+@media (max-width:960px){.mapwrap{grid-template-columns:1fr}}
+#mapBox{position:relative}
+#tip{position:absolute;pointer-events:none;background:var(--panel);border:1px solid var(--line);border-radius:6px;
+  padding:5px 8px;font-size:.8rem;box-shadow:0 2px 8px rgba(0,0,0,.18);display:none;max-width:260px;z-index:2}
+.counts td:first-child{white-space:nowrap}
+footer{margin-top:28px;color:var(--muted);font-size:.85rem}
+.themebtn{float:right}
+</style>
+</head>
+<body>
+<div class="wrap">
+<header>
+  <button class="themebtn" id="themeBtn" title="Toggle light/dark">◐</button>
+  <h1>SRAM + march BIST: interactive RTL walk-through</h1>
+  <p>Every clock edge here runs a <b>cycle-accurate JavaScript port</b> of
+  <a href="https://github.com/vishrutsharma777/sram-bist-engine/blob/main/rtl/mbist_ctrl.v"><code>mbist_ctrl.v</code></a> and
+  <a href="https://github.com/vishrutsharma777/sram-bist-engine/blob/main/rtl/sram_faulty.v"><code>sram_faulty.v</code></a>,
+  wired as in <code>tb/tb_mbist.v</code>. Pick a fault, pick MATS+ or March C−, and watch the engine walk the 64 × 8 memory,
+  read back each word one cycle later and latch the first mismatch.</p>
+  <div class="badges">
+    <span class="badge">port checked against <code>docs/fault_table.md</code>: <b>24/24 results</b></span>
+    <span class="badge">op count on a clean memory: <b>320 = 5N</b> · <b>640 = 10N</b></span>
+    <span class="badge">11 fault models · one clock · first-failure latch</span>
+  </div>
+</header>
+
+<section class="panel" id="sim">
+  <div class="controls">
+    <div class="grp">
+      <button id="btnReset" title="Assert rst_n, clear the memory (as tb clear_mem does)">⟲ Reset</button>
+      <button id="btnStep" title="One rising edge of clk">Step 1 clock</button>
+      <button id="btnStepAddr" title="Until the engine moves to the next address">Step 1 address</button>
+      <button id="btnStepElem" title="Run to the start of the next march element">Next element</button>
+      <button id="btnPlay" class="primary">▶ Play</button>
+    </div>
+    <div class="grp"><span class="stat">speed</span>
+      <input id="speed" type="range" min="0" max="7" value="2" aria-label="speed">
+      <span class="stat" id="speedLbl"></span>
+    </div>
+    <div class="grp">
+      <button id="btnToFail" class="danger" title="Run until the first failure latches (or the test ends)">Run to first failure</button>
+      <button id="btnToEnd" title="Run until done">Run to end</button>
+    </div>
+  </div>
+  <div class="controls" style="margin-top:8px">
+    <div class="grp"><span class="stat">algorithm (<code>algo</code>)</span>
+      <select id="algo"><option value="0">0: MATS+ (5N)</option><option value="1" selected>1: March C− (10N)</option></select>
+    </div>
+    <div class="grp"><span class="stat">injected fault</span>
+      <select id="fault"></select>
+    </div>
+    <span class="sep"></span>
+    <label class="tog" title="What-if, not in the RTL"><input type="checkbox" id="same"> Compare in the same cycle (no <code>chk_*</code> shadow)</label>
+    <label class="tog"><input type="checkbox" id="real"> Real-silicon view</label>
+  </div>
+  <div id="custom" class="controls">
+    <div class="grp"><span class="stat">type</span>
+      <select id="ctype">
+        <option value="NONE">none</option><option value="SA0">SA0 stuck-at-0</option><option value="SA1">SA1 stuck-at-1</option>
+        <option value="TFUP">TF↑ cannot rise</option><option value="TFDN">TF↓ cannot fall</option>
+        <option value="CFIN">CFin inversion coupling</option><option value="CFID0">CFid0 idempotent → 0</option>
+        <option value="CFID1">CFid1 idempotent → 1</option><option value="AF">AF address alias</option>
+      </select></div>
+    <div class="grp"><span class="stat">victim addr</span><input type="number" id="cva" min="0" max="63">
+      <span class="stat">bit</span><input type="number" id="cvb" min="0" max="7"></div>
+    <div class="grp"><span class="stat">aggressor addr</span><input type="number" id="caa" min="0" max="63">
+      <span class="stat">bit</span><input type="number" id="cab" min="0" max="7"></div>
+    <span class="stat">Tip: click a memory cell to move the victim, shift-click to move the aggressor.</span>
+  </div>
+  <div class="controls" style="margin-top:8px">
+    <span class="stat">cycle <b id="sCycle">0</b></span>
+    <span class="stat">state <b id="sState">IDLE</b></span>
+    <span class="stat">ops issued <b id="sOps">0</b></span>
+    <span class="stat">reads checked <b id="sChecked">0</b></span>
+    <span class="stat">fault activations <b id="sAct">0</b></span>
+    <span class="stat">result <b id="sResult">running</b></span>
+  </div>
+
+  <div class="diagram-scroll">
+  <svg id="diagram" viewBox="0 0 1200 640" role="img" aria-label="Block diagram: mbist_ctrl drives sram_faulty; dout returns to a comparator and a first-failure latch">
+    <defs>
+      <marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+        <path d="M0,0 L10,5 L0,10 z" fill="var(--wire)"/></marker>
+      <marker id="arrd" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+        <path d="M0,0 L10,5 L0,10 z" fill="var(--dash)"/></marker>
+      <marker id="arre" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+        <path d="M0,0 L10,5 L0,10 z" fill="var(--err)"/></marker>
+    </defs>
+
+    <text class="lbl notreal" x="12" y="36">One clock: clk drives both blocks. tb_mbist.v wires mbist_ctrl straight to sram_faulty and injects one fault per run.</text>
+    <text class="ovl-tag ovl" x="12" y="36">Real-silicon view: dashed pink = what a production memory and BIST would add. Not in this RTL; the simulation still runs the RTL.</text>
+
+    <!-- ================= mbist_ctrl ================= -->
+    <rect class="blk" x="20" y="56" width="555" height="480" rx="8"/>
+    <text class="blk-title" x="32" y="80">mbist_ctrl</text>
+    <text class="blk-sub" x="32" y="97">march engine: one element decoder, two programs</text>
+    <text class="lbl" x="420" y="80">op_count</text><text class="val" id="t_opcount" x="490" y="80"></text>
+
+    <text class="lbl" x="32" y="129">state</text>
+    <g id="pills"></g>
+    <text class="lbl" x="372" y="129">drain</text><text class="val" id="t_drain" x="418" y="129"></text>
+
+    <text class="lbl" x="32" y="158">march elements (RTL elem 0–5)</text>
+    <text class="lbl" id="t_prog" x="250" y="158"></text>
+    <g id="elems"></g>
+
+    <!-- sequencer registers -->
+    <text class="lbl" x="32" y="246">step</text><rect class="reg" id="r_step" x="68" y="232" width="30" height="20" rx="4"/><text class="regtxt" id="t_step" x="83" y="242"></text>
+    <text class="lbl" x="112" y="246">elem</text><rect class="reg" id="r_elem" x="150" y="232" width="30" height="20" rx="4"/><text class="regtxt" id="t_elem" x="165" y="242"></text>
+    <text class="lbl" x="194" y="246">opi</text><rect class="reg" id="r_opi" x="224" y="232" width="30" height="20" rx="4"/><text class="regtxt" id="t_opi" x="239" y="242"></text>
+    <text class="lbl" x="268" y="246">acnt</text><rect class="reg" id="r_acnt" x="306" y="232" width="34" height="20" rx="4"/><text class="regtxt" id="t_acnt" x="323" y="242"></text>
+    <text class="lbl-ink" id="t_curaddr" x="32" y="274"></text>
+    <text class="lbl-ink" id="t_opnow" x="32" y="296"></text>
+    <text class="blk-sub" id="t_next" x="32" y="317"></text>
+
+    <!-- port drive -->
+    <rect class="blk" x="398" y="214" width="170" height="104" rx="6" style="fill:var(--chip)"/>
+    <text class="lbl" x="406" y="230">SRAM port drive</text>
+    <text class="lbl-sm" x="406" y="249">ce_n = ~(state==RUN)</text>
+    <text class="lbl-sm" x="406" y="269">we_n = ce_n | cur_rd</text>
+    <text class="lbl-sm" x="406" y="289">addr = cur_addr</text>
+    <text class="lbl-sm" x="406" y="309">din  = {8{cur_dat}}</text>
+
+    <!-- compare shadow -->
+    <g class="shadowgrp">
+      <text class="lbl" x="32" y="350">compare shadow: written on every RUN edge, compared on the next edge</text>
+      <text class="lbl" x="32" y="376">chk_v</text><rect class="reg" id="r_chkv" x="78" y="362" width="28" height="20" rx="4"/><text class="regtxt" id="t_chkv" x="92" y="372"></text>
+      <text class="lbl" x="120" y="376">chk_exp</text><rect class="reg" id="r_chkexp" x="180" y="362" width="38" height="20" rx="4"/><text class="regtxt" id="t_chkexp" x="199" y="372"></text>
+      <text class="lbl" x="232" y="376">chk_addr</text><rect class="reg" id="r_chkaddr" x="298" y="362" width="32" height="20" rx="4"/><text class="regtxt" id="t_chkaddr" x="314" y="372"></text>
+      <text class="lbl" x="344" y="376">chk_elem</text><rect class="reg" id="r_chkelem" x="410" y="362" width="28" height="20" rx="4"/><text class="regtxt" id="t_chkelem" x="424" y="372"></text>
+      <path class="wire" id="w_chkexp" d="M199,382 V412 H312" marker-end="url(#arr)"/>
+    </g>
+    <!-- comparator -->
+    <circle class="cmp" id="cmp" cx="330" cy="412" r="17"/><text class="cmptxt" x="330" y="412">≠</text>
+    <circle class="flash" id="flashCmp" cx="330" cy="412" r="30"/>
+    <text class="lbl-sm nobug" x="352" y="440">mismatch = chk_v &amp; (dout !== chk_exp)</text>
+    <path class="wire" id="w_mis" d="M330,429 V458" marker-end="url(#arr)"/>
+    <text class="val" id="v_mis" x="338" y="452"></text>
+    <g class="bugonly">
+      <path class="bugwire" d="M560,300 H580 V330 H470 V398 H346" marker-end="url(#arre)"/>
+      <text class="lbl-sm" x="352" y="440" style="fill:var(--err)">what-if: mismatch = cur_rd &amp; (dout now !== din now)</text>
+    </g>
+
+    <!-- first-failure latch -->
+    <rect class="blk" x="32" y="460" width="530" height="66" rx="6" style="fill:var(--chip)"/>
+    <text class="lbl" x="40" y="477">first-failure latch (sticky until start)</text>
+    <text class="lbl" x="40" y="503">fail</text><rect class="reg" id="r_fail" x="72" y="489" width="26" height="20" rx="4"/><text class="regtxt" id="t_fail" x="85" y="499"></text>
+    <text class="lbl" x="110" y="503">addr</text><rect class="reg" id="r_faddr" x="146" y="489" width="30" height="20" rx="4"/><text class="regtxt" id="t_faddr" x="161" y="499"></text>
+    <text class="lbl" x="188" y="503">got</text><rect class="reg" id="r_fgot" x="216" y="489" width="34" height="20" rx="4"/><text class="regtxt" id="t_fgot" x="233" y="499"></text>
+    <text class="lbl" x="262" y="503">exp</text><rect class="reg" id="r_fexp" x="290" y="489" width="34" height="20" rx="4"/><text class="regtxt" id="t_fexp" x="307" y="499"></text>
+    <text class="lbl" x="336" y="503">elem</text><rect class="reg" id="r_felem" x="372" y="489" width="26" height="20" rx="4"/><text class="regtxt" id="t_felem" x="385" y="499"></text>
+    <text class="blk-sub" id="t_failmsg" x="40" y="520"></text>
+    <circle class="flash" id="flashLatch" cx="85" cy="499" r="22"/>
+    <g transform="translate(290,536)"><path d="M0,0 L8,-9 L16,0" fill="none" stroke="var(--warn)" stroke-width="1.5"/></g>
+
+    <!-- ================= sram_top mux (context) ================= -->
+    <path class="mux" d="M598,212 L640,226 L640,312 L598,326 Z"/>
+    <text class="lbl-sm" x="586" y="206">sram_top mux</text>
+    <text class="lbl-sm" x="586" y="340">bist_mode = 1</text>
+    <text class="lbl-sm" x="582" y="352">(tb bypasses it)</text>
+
+    <!-- port wires -->
+    <path class="wire" id="w_cen" d="M568,236 H698" marker-end="url(#arr)"/>
+    <path class="wire" id="w_wen" d="M568,256 H698" marker-end="url(#arr)"/>
+    <path class="wire bus" id="w_addr" d="M568,276 H710" marker-end="url(#arr)"/>
+    <path class="wire bus" id="w_din" d="M568,296 H698" marker-end="url(#arr)"/>
+    <text class="lbl" x="645" y="232">ce_n</text><text class="val" id="v_cen" x="681" y="232"></text>
+    <text class="lbl" x="645" y="252">we_n</text><text class="val" id="v_wen" x="681" y="252"></text>
+    <text class="lbl" x="645" y="272">addr</text><text class="val" id="v_addr" x="681" y="272"></text>
+    <text class="lbl" x="645" y="292">din</text><text class="val" id="v_din" x="673" y="292"></text>
+
+    <!-- dout back to comparator -->
+    <path class="wire bus" id="w_dout" d="M716,412 H348" marker-end="url(#arr)"/>
+    <text class="lbl" x="600" y="404">dout</text><text class="val" id="v_dout" x="640" y="404"></text>
+
+    <!-- ================= sram_faulty ================= -->
+    <rect class="blk" x="700" y="56" width="485" height="480" rx="8"/>
+    <text class="blk-title" x="712" y="80">sram_faulty</text>
+    <text class="blk-sub" x="712" y="97">64 × 8 · registered read (data one cycle later) · fault injector</text>
+
+    <rect class="blk" x="712" y="108" width="461" height="44" rx="6" style="fill:var(--chip)"/>
+    <text class="lbl" id="t_fault" x="720" y="125" style="fill:var(--ink)"></text>
+    <text class="blk-sub" id="t_faultstate" x="720" y="144"></text>
+
+    <!-- address decode -->
+    <rect class="blk" x="714" y="222" width="70" height="80" rx="6"/>
+    <text class="lbl" x="720" y="239">eff_addr</text>
+    <text class="lbl-sm" x="720" y="256">AF swaps</text>
+    <text class="lbl-sm" x="720" y="268">the decode</text>
+    <text class="val" id="t_ea" x="720" y="292"></text>
+    <path class="wire" id="w_ea" d="M784,262 H800"/>
+
+    <!-- memory array -->
+    <text class="lbl-sm" x="806" y="170">mem[0:63], bit 7 … 0 per row; addresses run down each column</text>
+    <g id="mem"></g>
+    <rect class="memhl" id="memHl" x="0" y="0" width="0" height="0"/>
+    <rect class="ring v" id="ringV" x="0" y="0" width="11" height="11"/>
+    <rect class="ring a" id="ringA" x="0" y="0" width="11" height="11"/>
+    <circle class="flash" id="flashVic" cx="0" cy="0" r="16"/>
+
+    <!-- dout register -->
+    <text class="lbl" x="716" y="384">dout (reg)</text>
+    <g id="doutCells"></g>
+    <text class="val" id="t_dout" x="808" y="417"></text>
+    <text class="lbl-sm notreal" x="840" y="384">read path: SA0/SA1 force the victim bit, then dout &lt;= rv</text>
+    <text class="lbl-sm notreal" x="840" y="398">write path: TF blocks the change; CF fires when the</text>
+    <text class="lbl-sm notreal" x="840" y="410">aggressor bit changes (either edge) and hits the victim</text>
+    <g transform="translate(1100,536)"><path d="M0,0 L8,-9 L16,0" fill="none" stroke="var(--warn)" stroke-width="1.5"/></g>
+
+    <text class="lbl" x="712" y="470">last edge</text>
+    <text class="evtxt" id="t_ev1" x="712" y="490"></text>
+    <text class="evtxt" id="t_ev2" x="712" y="508"></text>
+    <text class="evtxt" id="t_ev3" x="712" y="526"></text>
+
+    <!-- ================= clock ================= -->
+    <rect class="blk" x="20" y="566" width="90" height="40" rx="6"/>
+    <path d="M32,592 h10 v-12 h10 v12 h10 v-12 h10 v12 h10" fill="none" stroke="var(--warn)" stroke-width="1.6"/>
+    <text class="lbl" x="22" y="622">clk</text>
+    <path class="clknet" id="clkA" d="M110,586 H1150 M298,586 V540 M1108,586 V540"/>
+    <text class="lbl" x="400" y="579">one clock: the controller and the SRAM sample on the same rising edge</text>
+
+    <!-- ================= real-silicon overlay ================= -->
+    <g class="ovl">
+      <rect class="ovl-fill" x="806" y="160" width="368" height="14" rx="3"/>
+      <text class="ovl-txt" x="808" y="171">real array: 6T bitcells on word/bit lines</text>
+      <rect class="ovl-box" x="800" y="158" width="378" height="185" rx="5"/>
+      <rect class="ovl-fill" x="806" y="346" width="368" height="22" rx="3"/>
+      <rect class="ovl-box" x="806" y="346" width="368" height="22" rx="3"/>
+      <text class="ovl-txt" x="812" y="361">column mux · sense amps · write drivers · precharge</text>
+      <rect class="ovl-fill" x="838" y="374" width="336" height="44" rx="3"/>
+      <rect class="ovl-box" x="838" y="374" width="336" height="44" rx="3"/>
+      <text class="ovl-txt" x="844" y="391">ECC on the read path (SECDED)</text>
+      <text class="ovl-tag" x="844" y="408">BIST usually tests with ECC bypassed</text>
+      <!-- test access -->
+      <rect class="ovl-fill" x="584" y="110" width="110" height="80" rx="5"/>
+      <rect class="ovl-box" x="584" y="110" width="110" height="80" rx="5"/>
+      <text class="ovl-txt" x="590" y="128">JTAG / 1500</text>
+      <text class="ovl-txt" x="590" y="143">wrapper</text>
+      <text class="ovl-tag" x="590" y="160">start, algo in;</text>
+      <text class="ovl-tag" x="590" y="174">done, fail_* out</text>
+      <path d="M584,150 H578" stroke="var(--dash)" stroke-width="1.6" fill="none" marker-end="url(#arrd)"/>
+      <!-- repair -->
+      <rect class="ovl-fill" x="584" y="430" width="110" height="96" rx="5"/>
+      <rect class="ovl-box" x="584" y="430" width="110" height="96" rx="5"/>
+      <text class="ovl-txt" x="590" y="448">repair (BISR)</text>
+      <text class="ovl-tag" x="590" y="465">fail_addr picks a</text>
+      <text class="ovl-tag" x="590" y="479">spare row; fuses</text>
+      <text class="ovl-tag" x="590" y="493">remap it at boot</text>
+      <text class="ovl-tag" x="590" y="512">not in this RTL</text>
+      <path d="M562,490 H581" stroke="var(--dash)" stroke-width="1.6" fill="none" marker-end="url(#arrd)"/>
+    </g>
+
+    <g id="tokens"></g>
+  </svg>
+  </div>
+  <div class="legend">
+    <span><i style="background:var(--one)"></i>bit / wire = 1</span>
+    <span><i style="background:var(--zero)"></i>wire = 0</span>
+    <span><i style="background:var(--accent)"></i>active bus / current address</span>
+    <span><u style="border-color:var(--err)"></u>victim cell</span>
+    <span><u style="border-color:var(--agg)"></u>aggressor cell</span>
+    <span><i style="background:var(--err)"></i>mismatch / failure</span>
+    <span><i style="background:var(--warn)"></i>clock (△ = flop clock pin)</span>
+    <span><i style="background:var(--dash)"></i>real-silicon additions (not in RTL)</span>
+  </div>
+</section>
+
+<section class="grid2">
+  <div class="panel">
+    <h2>Waveforms (last 32 cycles)</h2>
+    <canvas id="wave" height="340"></canvas>
+    <div class="stat" style="margin-top:6px">Each column is one clock cycle; registers change on the rising edge at its left side. The shaded rightmost column is the cycle about to be clocked. A read issued in one cycle shows its data on <code>dout</code> in the next, where <code>chk_v</code> is high and the compare happens.</div>
+  </div>
+  <div class="panel">
+    <h2>Operation log</h2>
+    <div class="tblscroll">
+    <table id="oplog">
+      <thead><tr><th>cycle</th><th class="l">element</th><th>addr</th><th class="l">op</th><th>data / exp</th><th>dout</th><th class="l">compare</th><th class="l">fault activity</th></tr></thead>
+      <tbody></tbody>
+    </table>
+    </div>
+    <div class="stat" style="margin-top:6px">Newest first. A read's <b>dout</b> and <b>compare</b> fill in one cycle after it is issued (the SRAM registers its output). The row that latched the first failure is shaded red.</div>
+  </div>
+</section>
+
+<section class="panel">
+  <h2>How each block works <span class="tag rtl">IN THE RTL</span></h2>
+  <div class="cards">
+    <div class="card"><h4>March notation</h4><p><code>⇑</code> walks addresses 0 → 63, <code>⇓</code> walks 63 → 0, and <code>⇕</code> means either (this RTL walks up). <code>(r0,w1)</code> means: at each address, read and expect all zeros, then write all ones. MATS+ = <code>⇕(w0) ⇑(r0,w1) ⇓(r1,w0)</code> = 5 operations per word. March C− = <code>⇕(w0) ⇑(r0,w1) ⇑(r1,w0) ⇓(r0,w1) ⇓(r1,w0) ⇕(r0)</code> = 10.</p></div>
+    <div class="card"><h4>Sequencer (mbist_ctrl.v)</h4><p><code>step</code> indexes the algorithm's element list, <code>acnt</code> counts addresses, and <code>opi</code> picks the operation inside an element. One element decoder serves both algorithms: <code>algo = 1</code> maps steps 0–5 to elements 0–5; <code>algo = 0</code> maps steps 0, 1, 2 to elements 0, 1, 4. MATS+ is a shorter walk through the same table.</p></div>
+    <div class="card"><h4>Read-compare pipeline</h4><p>The SRAM registers <code>dout</code>, so a read issued in cycle N delivers data in cycle N+1. The engine copies the expected value, address and element into <code>chk_*</code> and compares one edge later. After the last element it spends 3 <code>DRAIN</code> edges, so the final read is still compared. Tick the what-if box above to see what goes wrong without the shadow.</p></div>
+    <div class="card"><h4>First-failure latch</h4><p>Only the first mismatch is stored: <code>fail_addr</code>, the word read (<code>fail_got</code>), the word expected and the element. The test still runs to the end. Real silicon does the same: the latched address feeds repair (spare-row allocation) rather than a full fail bitmap.</p></div>
+    <div class="card"><h4>Fault injector (sram_faulty.v)</h4><p>The fault is set by module inputs, so one compiled image sweeps every case. SA0/SA1 force the victim bit on the read path. TF↑/TF↓ block the victim bit's 0→1 or 1→0 change on a write. CFin/CFid act when a write changes the aggressor bit: the victim bit is inverted or forced. AF makes the aggressor address decode to the victim's word.</p></div>
+    <div class="card"><h4>Testbench (tb_mbist.v)</h4><p>For each of the 12 cases and both algorithms it resets, clears the memory, pulses <code>start</code> for one cycle and waits for <code>done</code>. The table records whether <code>fail</code> was set. The fault-free control must stay clean, or the run stops with <code>FATAL</code>. <code>sram_top.v</code> (the synthesisable wrapper with the functional-port mux) is not in this loop.</p></div>
+  </div>
+</section>
+
+<section class="panel" id="sweep">
+  <h2>Re-run the fault sweep in your browser</h2>
+  <p class="stat" style="margin:0 0 8px">This replays <code>tb/tb_mbist.v</code> on the cycle model: 12 cases × 2 algorithms. Each result is compared with <code>docs/fault_table.md</code>, which Icarus Verilog wrote. The extra columns come from the first-failure latch. Click <b>load</b> to open a case in the simulator above.</p>
+  <button id="btnSweep" class="primary">Run 24 cases</button> <span class="stat" id="sweepStatus"></span>
+  <div class="tblscroll" style="margin-top:10px">
+  <table id="sweepTbl">
+    <thead><tr><th>injected fault</th><th class="l">MATS+ (5N)</th><th class="l">first failure</th><th class="l">March C− (10N)</th><th class="l">first failure</th><th>vs Verilog</th><th></th></tr></thead>
+    <tbody></tbody>
+  </table>
+  </div>
+  <div class="note"><b>Read the table:</b> MATS+ misses 4 of 11 and March C− catches all 11. MATS+ misses <b>TF↓</b> because its last element ends with <code>w0</code>, and no read follows; March C− catches it in <code>⇓(r0,w1)</code>, the next read of that cell. MATS+ misses <b>coupling faults</b> on one side of the victim only: whether the aggressor is visited before or after the victim decides detection, and a single-direction walk covers only one ordering. The map below shows this for every address pair.</div>
+</section>
+
+<section class="panel" id="coverage">
+  <h2>Coverage over every address pair</h2>
+  <p class="stat" style="margin:0 0 8px">The testbench tries one aggressor/victim pair per coupling fault. Here every pair of the 64 addresses is tried (aggressor bit 6, victim bit 1, as in the testbench). This uses the op-level model (the same algorithm as <code>scripts/golden_model.py</code>); <code>check_model.js</code> asserts it agrees with the cycle model on every pair.</p>
+  <div class="controls">
+    <div class="grp"><span class="stat">fault</span>
+      <select id="mType">
+        <option value="CFIN">CFin (inversion)</option><option value="CFID0">CFid0 (forces 0)</option>
+        <option value="CFID1" selected>CFid1 (forces 1)</option><option value="AF">AF (address alias)</option>
+      </select></div>
+    <div class="grp"><span class="stat">algorithm</span>
+      <select id="mAlgo">
+        <option value="0">MATS+</option><option value="1" selected>March C−</option>
+        <option value="C-noR0">March C− without final ⇕(r0) (what-if)</option>
+      </select></div>
+    <div class="grp"><span class="stat">coupling fires on</span>
+      <select id="mTrig">
+        <option value="0" selected>either aggressor edge (as in sram_faulty.v)</option>
+        <option value="1">rising edge only (what-if)</option>
+        <option value="2">falling edge only (what-if)</option>
+      </select></div>
+  </div>
+  <div class="mapwrap" style="margin-top:10px">
+    <div id="mapBox">
+      <canvas id="map" height="520"></canvas>
+      <div id="tip"></div>
+      <div class="legend">
+        <span><s style="background:var(--hit)"></s>caught</span>
+        <span><s style="background:var(--miss)"></s>missed</span>
+        <span>rows = aggressor address, columns = victim address; hover for details, click to load into the simulator</span>
+      </div>
+    </div>
+    <div>
+      <table class="counts" id="mapCounts">
+        <thead><tr><th>pairs</th><th>caught</th><th>missed</th></tr></thead>
+        <tbody></tbody>
+      </table>
+      <h3>Caught in which element</h3>
+      <table class="counts" id="mapElems">
+        <thead><tr><th>element</th><th>pairs</th></tr></thead>
+        <tbody></tbody>
+      </table>
+      <div class="note" id="mapNote"></div>
+    </div>
+  </div>
+
+  <h3>Every location, every fault type</h3>
+  <p class="stat" style="margin:0 0 6px">SA and TF faults: all 512 cells. Coupling faults: all 4096 address pairs, including the 64 same-word pairs. AF: the 4032 pairs of distinct addresses. The coupling-edge setting above applies to the CF rows.</p>
+  <div class="tblscroll">
+  <table id="allTbl">
+    <thead><tr><th>fault</th><th>locations</th><th>MATS+</th><th>March C−</th><th>March C− without final ⇕(r0) <span class="stat">(what-if)</span></th></tr></thead>
+    <tbody></tbody>
+  </table>
+  </div>
+</section>
+
+<section class="panel">
+  <h2>What a production memory adds <span class="tag no">NOT IN THIS RTL · NEXT STEPS</span></h2>
+  <p class="stat" style="margin:0">This project models the memory at the pin contract of a compiler macro and tests it with a single-port march BIST. Tick <b>Real-silicon view</b> above to see where these parts would sit. They are design notes; the simulation does not model them.</p>
+  <div class="cards">
+    <div class="card notrtl"><h4>6T array and periphery</h4><p>A real array is 6T bitcells on word lines and bit-line pairs, with precharge, sense amplifiers, a column mux and write drivers. Faults come from that physics (opens, shorts, weak cells), and the fault models here are their logical abstractions.</p></div>
+    <div class="card notrtl"><h4>Test access</h4><p>On a chip, <code>start</code>/<code>algo</code> and the <code>fail_*</code> registers are reached through JTAG or an IEEE 1500 wrapper, and one BIST controller often tests many memories.</p></div>
+    <div class="card notrtl"><h4>Repair (BISR)</h4><p>The first-failure address goes to redundancy analysis, which maps the failing row to a spare row and blows fuses (or stores the map) so the remap is applied at every boot.</p></div>
+    <div class="card notrtl"><h4>ECC</h4><p>SECDED Hamming (39,32) on the read path corrects single-bit errors in the field. BIST normally runs with ECC bypassed so it sees raw cell faults. Listed under Extensions in the README.</p></div>
+    <div class="card notrtl"><h4>More fault classes</h4><p>Data-retention faults need a pause element before reading. State coupling faults (a cell disturbed only while a neighbour holds the opposite value) need checkerboard and other data backgrounds, because all-0/all-1 words never put two bits of a word in opposite states.</p></div>
+  </div>
+</section>
+
+<footer>
+  Source: <a href="https://github.com/vishrutsharma777/sram-bist-engine">github.com/vishrutsharma777/sram-bist-engine</a>. The page runs <code>demo/model.js</code>; <code>node demo/check_model.js</code> checks it against the Verilog fault table.
+</footer>
+</div>
+<script src="model.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
