@@ -47,12 +47,21 @@ Two things fall out of this table:
 
 1. **MATS+ misses TF-down because it ends on a write.** Its last element is
    `down(r1,w0)`; a cell that cannot fall is left holding 1 and never read
-   again. March C- appends `updownarrow(r0)` precisely to close this hole -
-   that final read is not decoration.
+   again (0 of all 512 cells caught). March C- catches it at its next read of
+   that cell, the `r0` of `down(r0,w1)`.
 2. **Coupling faults are order dependent.** Whether an aggressor is visited
    before or after its victim decides detection. A single-direction algorithm
    catches one ordering and misses the other; March C- walks ascending *and*
    descending, which is why it covers both columns.
+
+**What the final `updownarrow(r0)` is for.** With the fault models in
+`sram_faulty.v` it catches nothing extra: a coupling fault there fires on
+*either* aggressor edge, so an earlier element always sees it (March C- with
+and without the final read: 4096/4096 pairs for every coupling type). It
+matters for one-edge coupling faults. A victim forced to 1 when an aggressor
+*below* it falls is hit by the last write of `down(r1,w0)`, after the victim
+has already been read; only the final read sees it, and without it all 2016
+such pairs are missed. The demo's coverage map shows this as a what-if.
 
 ## Layout
 
@@ -87,7 +96,10 @@ No make on PATH: `python scripts/run_sweep.py`.
 **Read-compare pipeline.** The SRAM registers its output, so a read issued in
 cycle N returns data in cycle N+1. `mbist_ctrl` carries a one-deep shadow
 (`chk_v`, `chk_exp`, `chk_addr`) and compares a cycle late. Compare in the
-same cycle and the engine passes everything - it is checking stale data.
+same cycle instead and the engine checks stale data: `dout` still holds the
+previous read, so even a fault-free memory fails at the first read (and again
+at the first `r1` of `up(r1,w0)`, which sees the last `0` from the element
+before). The demo has this as a what-if switch.
 
 **First-failure latch.** Only the first mismatch is captured
 (`fail_addr`/`fail_got`/`fail_exp`/`fail_elem`), matching real silicon where
