@@ -7,7 +7,7 @@ coverage comparison between two march algorithms**.
 
 ## Live demo
 
-**[vishrutsharma777.github.io/sram-bist-engine](https://vishrutsharma777.github.io/sram-bist-engine/)**:
+**[vishrutsharma777.github.io/sram-bist-engine/demo](https://vishrutsharma777.github.io/sram-bist-engine/demo/)**:
 an interactive, cycle-accurate walk-through of the BIST engine and the faulty
 memory. Pick a fault and an algorithm, step the clock and watch the march walk
 the 64 x 8 array, the read-compare shadow register, and the first-failure latch.
